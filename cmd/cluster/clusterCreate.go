@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -99,6 +100,23 @@ func NewCmdClusterCreate() *cobra.Command {
 			simpleCfg, err := config.SimpleConfigFromViper(cfgViper)
 			if err != nil {
 				l.Log().Fatalln(err)
+			}
+
+			//Check if configfile host volume paths are local or absolute paths in the file and change to absolute.
+			for x, _ := range simpleCfg.Volumes {
+				volume := simpleCfg.Volumes[x].Volume
+				if strings.HasPrefix(volume, ".") {
+					hostPath := strings.Split(volume, ":")
+					configFileDir := filepath.Dir(configFile)
+					absoluteConfigFilePath, err := filepath.Abs(configFileDir)
+
+					if err != nil {
+						l.Log().Warningln(err)
+					}
+
+					absoluteHostPath := filepath.Join(absoluteConfigFilePath, hostPath[0])
+					simpleCfg.Volumes[x].Volume = fmt.Sprintf("%s:%s", absoluteHostPath, hostPath[1])
+				}
 			}
 
 			l.Log().Debugf("========== Simple Config ==========\n%+v\n==========================\n", simpleCfg)

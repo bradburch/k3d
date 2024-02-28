@@ -305,3 +305,108 @@ func TestReadSimpleConfigRegistries(t *testing.T) {
 		t.Errorf("Actual representation\n%+v\ndoes not match expected representation\n%+v\nDiff:\n%+v", readConfig, expectedConfig, diff)
 	}
 }
+
+func TestReadSimpleConfigLocalVolumes(t *testing.T) {
+	exposedAPI := conf.SimpleExposureOpts{}
+	exposedAPI.HostIP = "0.0.0.0"
+	exposedAPI.HostPort = "6443"
+
+	expectedConfig := conf.SimpleConfig{
+		TypeMeta: configtypes.TypeMeta{
+			APIVersion: "k3d.io/v1alpha5",
+			Kind:       "Simple",
+		},
+		ObjectMeta: configtypes.ObjectMeta{
+			Name: "test",
+		},
+		Servers:   1,
+		Agents:    2,
+		ExposeAPI: exposedAPI,
+		Image:     "rancher/k3s:latest",
+		Volumes: []conf.VolumeWithNodeFilters{
+			{
+				Volume:      "./local/path:/some/path",
+				NodeFilters: []string{"all"},
+			},
+		},
+		Ports: []conf.PortWithNodeFilters{
+			{
+				Port:        "80:80",
+				NodeFilters: []string{"loadbalancer"},
+			}, {
+				Port:        "0.0.0.0:443:443",
+				NodeFilters: []string{"loadbalancer"},
+			},
+		},
+		Env: []conf.EnvVarWithNodeFilters{
+			{
+				EnvVar:      "bar=baz",
+				NodeFilters: []string{"all"},
+			},
+		},
+		Options: conf.SimpleConfigOptions{
+			K3dOptions: conf.SimpleConfigOptionsK3d{
+				Wait:                true,
+				Timeout:             60 * time.Second,
+				DisableLoadbalancer: false,
+				DisableImageVolume:  false,
+			},
+			K3sOptions: conf.SimpleConfigOptionsK3s{
+				ExtraArgs: []conf.K3sArgWithNodeFilters{
+					{
+						Arg:         "--tls-san=127.0.0.1",
+						NodeFilters: []string{"server:*"},
+					},
+				},
+				NodeLabels: []conf.LabelWithNodeFilters{
+					{
+						Label:       "foo=bar",
+						NodeFilters: []string{"server:0", "loadbalancer"},
+					},
+				},
+			},
+			KubeconfigOptions: conf.SimpleConfigOptionsKubeconfig{
+				UpdateDefaultKubeconfig: true,
+				SwitchCurrentContext:    true,
+			},
+			Runtime: conf.SimpleConfigOptionsRuntime{
+				Labels: []conf.LabelWithNodeFilters{
+					{
+						Label:       "foo=bar",
+						NodeFilters: []string{"server:0", "loadbalancer"},
+					},
+				},
+				Ulimits: []conf.Ulimit{{
+					Name: "nofile",
+					Soft: 1024,
+					Hard: 1024,
+				}},
+			},
+		},
+	}
+
+	cfgFile := "./test_assets/config_test_simple_local_volumes.yaml"
+
+	config := viper.New()
+	config.SetConfigFile(cfgFile)
+
+	// try to read config into memory (viper map structure)
+	if err := config.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			t.Error(err)
+		}
+		// config file found but some other error happened
+		t.Error(err)
+	}
+
+	cfg, err := FromViper(config)
+	if err != nil {
+		t.Error(err)
+	}
+
+	t.Logf("\n========== Read Config %s ==========\n%+v\n=================================\n", config.ConfigFileUsed(), cfg)
+
+	if diff := deep.Equal(cfg, expectedConfig); diff != nil {
+		t.Errorf("Actual representation\n%+v\ndoes not match expected representation\n%+v\nDiff:\n%+v", cfg, expectedConfig, diff)
+	}
+}
